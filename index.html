@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Control de Ventas y Comisiones</title>
+
+  <!-- Librerías para generación de PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; font-family: Arial, sans-serif; }
+    body { background-color: #f0f2f5; margin: 0; padding: 20px; color: #333; }
+    .container { max-width: 1100px; margin: 0 auto; }
+    .card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+    .card-comisiones { background: #eef9f1; border: 1px solid #c3e6cb; }
+    .card-historial { background: #f8f9fa; border: 1px solid #dee2e6; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; }
+    
+    label { font-weight: bold; font-size: 0.85em; display: block; margin-top: 8px; margin-bottom: 4px; }
+    input, select, button { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 0.95em; }
+    button { background-color: #0d6efd; color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 10px; }
+    button:hover { background-color: #0b5ed7; }
+    button:disabled { background-color: #ccc; cursor: not-allowed; }
+    .btn-success { background-color: #198754; }
+    .btn-success:hover { background-color: #157347; }
+    .btn-danger { background-color: #dc3545; padding: 5px 8px; margin-top: 0; font-size: 0.8em; }
+    .btn-warning { background-color: #ffc107; color: #000; padding: 5px 8px; margin-top: 0; font-size: 0.8em; }
+    .btn-warning:hover { background-color: #e0a800; }
+    .btn-pdf { background-color: #dc3545; width: auto; padding: 8px 16px; margin-top: 0; }
+    .btn-pdf:hover { background-color: #bb2d3b; }
+    
+    .stat-box { text-align: center; padding: 15px; border-radius: 6px; background-color: #f8f9fa; border: 1px solid #e9ecef; }
+    .stat-box h4 { margin: 0 0 5px 0; color: #6c757d; font-size: 0.8em; text-transform: uppercase; }
+    .stat-box p { margin: 0; font-size: 1.4em; font-weight: bold; }
+    
+    .badge { display: inline-block; padding: 6px 12px; border-radius: 20px; font-weight: bold; font-size: 0.85em; }
+    .badge-danger { background-color: #f8d7da; color: #842029; }
+    .badge-success { background-color: #d1e7dd; color: #0f5132; }
+    .badge-info { background-color: #cff4fc; color: #055160; }
+    .badge-warning { background-color: #fff3cd; color: #664d03; }
+    
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+    th, td { text-align: left; padding: 10px; border-bottom: 1px solid #dee2e6; font-size: 0.9em; vertical-align: middle; }
+    th { background-color: #f8f9fa; }
+    .actions-cell { display: flex; gap: 5px; justify-content: flex-end; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>Control de Ventas, Cobros y Comisiones</h2>
+
+  <!-- RESUMEN DE COMISIONES HABILITADAS -->
+  <div class="card card-comisiones">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <div>
+        <h3 style="margin: 0; color: #0f5132;">Comisiones Habilitadas (Pedidos Pagados al 100%)</h3>
+        <small style="color: #555;">Monto de comisión calculado exclusivamente sobre el valor de pedidos saldados en su totalidad</small>
+      </div>
+      <div style="text-align: right;">
+        <span style="font-size: 1.8em; font-weight: bold; color: #198754;" id="lblTotalComisionesAcumuladas">$0.00</span>
+      </div>
+    </div>
+
+    <div style="margin-top: 15px; display: flex; justify-content: space-between; align-items: center;">
+      <button type="button" class="btn-success" id="btnCobrarComisiones" style="width: auto; padding: 8px 16px; margin-top: 0;" onclick="liquidarComisionesMes()">
+        Registrar Cobro de Comisiones del Periodo
+      </button>
+    </div>
+
+    <table style="margin-top: 15px; background: white; border-radius: 5px; overflow: hidden;">
+      <thead>
+        <tr>
+          <th>Cliente</th>
+          <th>Pedido</th>
+          <th>Monto del Pedido</th>
+          <th>Estado del Pago</th>
+          <th>Comisión Generada</th>
+        </tr>
+      </thead>
+      <tbody id="tablaComisionesPendientes"></tbody>
+    </table>
+  </div>
+
+  <!-- HISTORIAL DE COMISIONES LIQUIDADAS -->
+  <div class="card card-historial">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <div>
+        <h3 style="margin: 0; color: #495057;">Historial de Liquidaciones de Comisiones Cobradas</h3>
+        <small style="color: #6c757d;">Registro histórico de cobros de comisiones realizados</small>
+      </div>
+      <button type="button" class="btn-pdf" id="btnExportarPDF" onclick="exportarPDFComisiones()">
+        📄 Exportar Historial en PDF
+      </button>
+    </div>
+
+    <table style="margin-top: 15px; background: white; border-radius: 5px; overflow: hidden;">
+      <thead>
+        <tr>
+          <th>Fecha de Cobro</th>
+          <th>ID Liquidación</th>
+          <th>Detalle de Pedidos Saldados Incluidos</th>
+          <th>Monto Liquidado</th>
+        </tr>
+      </thead>
+      <tbody id="tablaHistorialLiquidaciones"></tbody>
+    </table>
+  </div>
+
+  <!-- SECCIÓN CLIENTES -->
+  <div class="card grid-2">
+    <div>
+      <h3>1. Seleccionar Cliente</h3>
+      <label>Cliente Activo:</label>
+      <select id="cmbClientes" onchange="cambiarCliente()"></select>
+    </div>
+    <div>
+      <h3>2. Crear Nuevo Cliente</h3>
+      <label>Nombre o Empresa:</label>
+      <div style="display: flex; gap: 10px;">
+        <input type="text" id="txtNuevoCliente" placeholder="Ej. Juan Pérez">
+        <button type="button" style="width: 140px; margin-top: 0;" onclick="crearCliente()">Crear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PANEL PRINCIPAL DEL CLIENTE -->
+  <div class="card" id="panelCliente" style="display: none;">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <h2>
+        <span id="lblNombreCliente"></span>
+        <button type="button" class="btn-warning" style="width: auto; margin-left: 10px; display: inline-block;" onclick="editarNombreCliente()">✏️ Renombrar</button>
+      </h2>
+      <button type="button" class="btn-danger" style="width: auto;" onclick="limpiarTodoDatos()">Borrar Todo el Sistema</button>
+    </div>
+
+    <!-- ESTADÍSTICAS DEL CLIENTE -->
+    <div class="grid-3" style="margin-bottom: 20px; margin-top: 15px;">
+      <div class="stat-box">
+        <h4>Total Histórico Ventas</h4>
+        <p id="lblTotalVentas">$0.00</p>
+      </div>
+      <div class="stat-box">
+        <h4>Total Abonado</h4>
+        <p id="lblTotalPagos">$0.00</p>
+      </div>
+      <div class="stat-box">
+        <h4>Balance / Estado General</h4>
+        <div id="lblEstadoBadge" style="margin-top: 5px;"></div>
+      </div>
+    </div>
+
+    <!-- ACCIONES: NUEVO PEDIDO / REGISTRAR PAGO -->
+    <div class="grid-3">
+      <!-- Cargar Nuevo Pedido -->
+      <div style="background: #f8f9fa; padding: 15px; border-radius: 6px;">
+        <h3>1. Registrar Nuevo Pedido</h3>
+        <label>Concepto / Detalle:</label>
+        <input type="text" id="txtVentaConcepto" placeholder="Ej. Pedido #2 - Mercadería">
+        <label>Valor Total del Pedido:</label>
+        <input type="number" step="any" id="txtVentaMonto" placeholder="0.00">
+        <label>% Comisión a aplicar:</label>
+        <input type="number" step="any" id="txtPorcentajeComision" value="10">
+        <button type="button" onclick="agregarPedido()">Crear Pedido</button>
+      </div>
+
+      <!-- Cargar Pago -->
+      <div style="background: #f8f9fa; padding: 15px; border-radius: 6px;">
+        <h3>2. Registrar Abono / Pago</h3>
+        <label>Método de Pago:</label>
+        <select id="cmbMetodoPago" onchange="toggleUSD()">
+          <option value="Transferencia">Transferencia</option>
+          <option value="Efectivo">Efectivo</option>
+          <option value="USD">Dólares (USD)</option>
+        </select>
+        
+        <label>Monto Abonado:</label>
+        <input type="number" step="any" id="txtPagoMonto" placeholder="0.00">
+        
+        <div id="divUSD" style="display: none;">
+          <label>Tipo de Cambio (TC):</label>
+          <input type="number" step="any" id="txtTipoCambio" placeholder="Ej. 1200">
+        </div>
+        
+        <button type="button" class="btn-success" onclick="agregarPago()">Cargar Abono</button>
+      </div>
+
+      <!-- INFO DE CASCADA Y COBRO -->
+      <div style="background: #f8f9fa; padding: 15px; border-radius: 6px;">
+        <h3>Criterio de Aplicación</h3>
+        <p style="font-size: 0.85em; color: #555; margin-top: 5px;">
+          Los abonos cubren en cascada deudas antiguas. Excedentes quedan registrados automáticamente como <strong>Saldo a Favor</strong>.
+        </p>
+        <p style="font-size: 0.85em; color: #198754; font-weight: bold; margin-top: 10px;">
+          ✓ Un pedido liberará su comisión tan pronto sea saldado al 100%.
+        </p>
+      </div>
+    </div>
+
+    <!-- TABLA DE PEDIDOS Y ESTADO DE SALDO -->
+    <h3 style="margin-top: 25px;">Desglose de Pedidos y Estado de Cobertura</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Pedido</th>
+          <th>Monto Pedido</th>
+          <th>Abonado Aplicado</th>
+          <th>Saldo Pendiente</th>
+          <th>Estado del Pedido</th>
+          <th>Comisión (si está pagado)</th>
+          <th style="text-align: right;">Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="tablaPedidosCliente"></tbody>
+    </table>
+
+    <!-- TABLA DE ABONOS RECIBIDOS -->
+    <h3 style="margin-top: 25px;">Historial de Abonos / Pagos Recibidos</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Método</th>
+          <th>Detalle USD</th>
+          <th>Monto Ingresado (Local)</th>
+          <th style="text-align: right;">Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="tablaPagosCliente"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  let DB = { clientes: [], pedidos: [], pagos: [], liquidacionesComision: [] };
+  let clienteSeleccionadoId = null;
+
+  function guardarDatos() {
+    localStorage.setItem("SISTEMA_VENTAS_DB", JSON.stringify(DB));
+    localStorage.setItem("CLIENTE_ACTIVO_ID", clienteSeleccionadoId);
+  }
+
+  function cargarDatos() {
+    const data = localStorage.getItem("SISTEMA_VENTAS_DB");
+    if (data) {
+      DB = JSON.parse(data);
+      if (!DB.pedidos) DB.pedidos = [];
+      if (!DB.pagos) DB.pagos = [];
+      if (!DB.liquidacionesComision) DB.liquidacionesComision = [];
+    }
+    clienteSeleccionadoId = localStorage.getItem("CLIENTE_ACTIVO_ID") || null;
+  }
+
+  function toggleUSD() {
+    const metodo = document.getElementById("cmbMetodoPago").value;
+    document.getElementById("divUSD").style.display = (metodo === "USD") ? "block" : "none";
+  }
+
+  function crearCliente() {
+    const inputNombre = document.getElementById("txtNuevoCliente");
+    const nombre = inputNombre.value.trim();
+    
+    if (!nombre) {
+      alert("Por favor ingresa un nombre para el cliente.");
+      return;
+    }
+
+    const idCliente = "CLI-" + Date.now();
+    DB.clientes.push({ id: idCliente, nombre: nombre });
+
+    clienteSeleccionadoId = idCliente;
+    inputNombre.value = "";
+
+    guardarDatos();
+    actualizarSelectorClientes();
+    render();
+  }
+
+  function editarNombreCliente() {
+    if (!clienteSeleccionadoId) return;
+    const cli = DB.clientes.find(c => c.id === clienteSeleccionadoId);
+    if (!cli) return;
+
+    const nuevoNombre = prompt("Modificar nombre del cliente:", cli.nombre);
+    if (nuevoNombre !== null && nuevoNombre.trim() !== "") {
+      cli.nombre = nuevoNombre.trim();
+      guardarDatos();
+      actualizarSelectorClientes();
+      render();
+    }
+  }
+
+  function actualizarSelectorClientes() {
+    const select = document.getElementById("cmbClientes");
+    select.innerHTML = '<option value="">-- Selecciona un cliente --</option>';
+    
+    DB.clientes.forEach(c => {
+      const option = document.createElement("option");
+      option.value = c.id;
+      option.textContent = c.nombre;
+      if (c.id === clienteSeleccionadoId) option.selected = true;
+      select.appendChild(option);
+    });
+  }
+
+  function cambiarCliente() {
+    clienteSeleccionadoId = document.getElementById("cmbClientes").value;
+    guardarDatos();
+    render();
+  }
+
+  function agregarPedido() {
+    if (!clienteSeleccionadoId) return;
+    const concepto = document.getElementById("txtVentaConcepto").value.trim() || "Pedido de Mercadería";
+    const monto = parseFloat(document.getElementById("txtVentaMonto").value);
+    const porcentajeComision = parseFloat(document.getElementById("txtPorcentajeComision").value) || 10;
+
+    if (isNaN(monto) || monto <= 0) return alert("Ingresa un monto válido para el pedido.");
+
+    const numPedido = DB.pedidos.filter(p => p.clienteId === clienteSeleccionadoId).length + 1;
+
+    DB.pedidos.push({
+      id: "PED-" + Date.now(),
+      clienteId: clienteSeleccionadoId,
+      numeroPedido: numPedido,
+      fecha: new Date().toLocaleDateString(),
+      concepto: concepto,
+      montoTotal: monto,
+      porcentajeComision: porcentajeComision,
+      comisionCobrada: false,
+      liquidacionId: null
+    });
+
+    document.getElementById("txtVentaConcepto").value = "";
+    document.getElementById("txtVentaMonto").value = "";
+    guardarDatos();
+    render();
+  }
+
+  function editarPedido(pedidoId) {
+    const ped = DB.pedidos.find(p => p.id === pedidoId);
+    if (!ped) return;
+
+    const nuevoConcepto = prompt("Editar concepto del pedido:", ped.concepto);
+    if (nuevoConcepto === null) return;
+
+    const nuevoMontoStr = prompt("Editar monto total del pedido ($):", ped.montoTotal);
+    if (nuevoMontoStr === null) return;
+    const nuevoMonto = parseFloat(nuevoMontoStr);
+
+    const nuevoPorcentajeStr = prompt("Editar % de comisión:", ped.porcentajeComision);
+    if (nuevoPorcentajeStr === null) return;
+    const nuevoPorcentaje = parseFloat(nuevoPorcentajeStr);
+
+    if (isNaN(nuevoMonto) || nuevoMonto <= 0) return alert("El monto ingresado no es válido.");
+    if (isNaN(nuevoPorcentaje) || nuevoPorcentaje < 0) return alert("El porcentaje no es válido.");
+
+    ped.concepto = nuevoConcepto.trim() || ped.concepto;
+    ped.montoTotal = nuevoMonto;
+    ped.porcentajeComision = nuevoPorcentaje;
+
+    guardarDatos();
+    render();
+  }
+
+  function eliminarPedido(pedidoId) {
+    if (confirm("¿Estás seguro de eliminar este pedido? Los cálculos de pagos se reajustarán automáticamente.")) {
+      DB.pedidos = DB.pedidos.filter(p => p.id !== pedidoId);
+      guardarDatos();
+      render();
+    }
+  }
+
+  function agregarPago() {
+    if (!clienteSeleccionadoId) return;
+    const metodo = document.getElementById("cmbMetodoPago").value;
+    const monto = parseFloat(document.getElementById("txtPagoMonto").value);
+
+    if (isNaN(monto) || monto <= 0) return alert("Ingresa un monto de abono válido.");
+
+    let montoUSD = 0;
+    let tipoCambio = 1;
+    let montoLocal = monto;
+
+    if (metodo === "USD") {
+      tipoCambio = parseFloat(document.getElementById("txtTipoCambio").value);
+      if (isNaN(tipoCambio) || tipoCambio <= 0) return alert("Ingresa un tipo de cambio válido.");
+      montoUSD = monto;
+      montoLocal = montoUSD * tipoCambio;
+    }
+
+    DB.pagos.push({
+      id: "PAG-" + Date.now(),
+      clienteId: clienteSeleccionadoId,
+      fecha: new Date().toLocaleDateString(),
+      metodo: metodo,
+      montoUSD: montoUSD,
+      tipoCambio: tipoCambio,
+      montoLocal: montoLocal
+    });
+
+    document.getElementById("txtPagoMonto").value = "";
+    document.getElementById("txtTipoCambio").value = "";
+    guardarDatos();
+    render();
+  }
+
+  function editarPago(pagoId) {
+    const pag = DB.pagos.find(p => p.id === pagoId);
+    if (!pag) return;
+
+    let nuevoMontoStr;
+    if (pag.metodo === "USD") {
+      nuevoMontoStr = prompt("Editar monto en USD:", pag.montoUSD);
+      if (nuevoMontoStr === null) return;
+      const nuevoMontoUSD = parseFloat(nuevoMontoStr);
+
+      const nuevoTCStr = prompt("Editar Tipo de Cambio (TC):", pag.tipoCambio);
+      if (nuevoTCStr === null) return;
+      const nuevoTC = parseFloat(nuevoTCStr);
+
+      if (isNaN(nuevoMontoUSD) || nuevoMontoUSD <= 0 || isNaN(nuevoTC) || nuevoTC <= 0) {
+        return alert("Valores de USD o TC no válidos.");
+      }
+
+      pag.montoUSD = nuevoMontoUSD;
+      pag.tipoCambio = nuevoTC;
+      pag.montoLocal = nuevoMontoUSD * nuevoTC;
+    } else {
+      nuevoMontoStr = prompt("Editar monto ingresado ($):", pag.montoLocal);
+      if (nuevoMontoStr === null) return;
+      const nuevoMonto = parseFloat(nuevoMontoStr);
+
+      if (isNaN(nuevoMonto) || nuevoMonto <= 0) return alert("Monto no válido.");
+
+      pag.montoLocal = nuevoMonto;
+      pag.montoUSD = 0;
+      pag.tipoCambio = 1;
+    }
+
+    guardarDatos();
+    render();
+  }
+
+  function eliminarPago(pagoId) {
+    if (confirm("¿Estás seguro de eliminar este abono? Se recalculante los saldos del cliente.")) {
+      DB.pagos = DB.pagos.filter(p => p.id !== pagoId);
+      guardarDatos();
+      render();
+    }
+  }
+
+  // CÁLCULO DE CASCADA DE PAGOS Y SALDO A FAVOR
+  function obtenerEstadoPedidosCliente(clienteId) {
+    const pedidosCliente = DB.pedidos.filter(p => p.clienteId === clienteId);
+    const totalPagos = DB.pagos.filter(p => p.clienteId === clienteId).reduce((sum, p) => sum + p.montoLocal, 0);
+    const totalVentas = pedidosCliente.reduce((sum, p) => sum + p.montoTotal, 0);
+
+    let bolsaPagos = totalPagos;
+    const listaProcesada = [];
+
+    pedidosCliente.forEach(ped => {
+      let aplicadoAPedido = 0;
+      let pendientePedido = ped.montoTotal;
+      let pagadoTotalmente = false;
+
+      if (bolsaPagos >= ped.montoTotal) {
+        aplicadoAPedido = ped.montoTotal;
+        pendientePedido = 0;
+        pagadoTotalmente = true;
+        bolsaPagos -= ped.montoTotal;
+      } else if (bolsaPagos > 0) {
+        aplicadoAPedido = bolsaPagos;
+        pendientePedido = ped.montoTotal - bolsaPagos;
+        pagadoTotalmente = false;
+        bolsaPagos = 0;
+      }
+
+      const montoComision = (ped.montoTotal * ped.porcentajeComision) / 100;
+
+      listaProcesada.push({
+        ...ped,
+        montoAplicado: aplicadoAPedido,
+        saldoPendiente: pendientePedido,
+        esPagadoTotal: pagadoTotalmente,
+        montoComisionCalculada: montoComision
+      });
+    });
+
+    const saldoAFavor = Math.max(0, totalPagos - totalVentas);
+    const deudaTotal = Math.max(0, totalVentas - totalPagos);
+
+    return {
+      pedidos: listaProcesada,
+      totalVentas: totalVentas,
+      totalPagos: totalPagos,
+      deudaTotal: deudaTotal,
+      saldoAFavor: saldoAFavor
+    };
+  }
+
+  function liquidarComisionesMes() {
+    let comisionesHabilitadas = [];
+
+    DB.clientes.forEach(cli => {
+      const estado = obtenerEstadoPedidosCliente(cli.id);
+      estado.pedidos.forEach(p => {
+        if (p.esPagadoTotal && !p.comisionCobrada) {
+          comisionesHabilitadas.push({ ...p, clienteNombre: cli.nombre });
+        }
+      });
+    });
+
+    if (comisionesHabilitadas.length === 0) {
+      return alert("No hay comisiones de pedidos totalmente saldados pendientes de cobro.");
+    }
+
+    const totalComisiones = comisionesHabilitadas.reduce((sum, c) => sum + c.montoComisionCalculada, 0);
+    const fechaActual = new Date().toLocaleDateString();
+    const liquidacionId = "LIQ-" + Date.now();
+
+    if (confirm(`¿Marcar como COBRADAS las comisiones por un total de $${totalComisiones.toLocaleString()}?`)) {
+      const detalles = [];
+
+      comisionesHabilitadas.forEach(c => {
+        const pedOriginal = DB.pedidos.find(p => p.id === c.id);
+        if (pedOriginal) {
+          pedOriginal.comisionCobrada = true;
+          pedOriginal.liquidacionId = liquidacionId;
+        }
+        detalles.push(`${c.clienteNombre} (Pedido #${c.numeroPedido}: $${c.montoComisionCalculada.toLocaleString()})`);
+      });
+
+      DB.liquidacionesComision.push({
+        id: liquidacionId,
+        fecha: fechaActual,
+        montoTotal: totalComisiones,
+        detalle: detalles.join(", ")
+      });
+
+      alert("Liquidación de comisiones registrada correctamente.");
+      guardarDatos();
+      render();
+    }
+  }
+
+  function exportarPDFComisiones() {
+    if (!DB.liquidacionesComision || DB.liquidacionesComision.length === 0) {
+      return alert("No hay liquidaciones en el historial para exportar.");
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+
+    doc.setFontSize(18);
+    doc.text("Reporte de Comisiones Cobradas", 14, 20);
+
+    doc.setFontSize(10);
+    doc.text(`Fecha de Emisión: ${new Date().toLocaleDateString()}`, 14, 28);
+
+    const tableData = DB.liquidacionesComision.map(liq => [
+      liq.fecha,
+      liq.id,
+      liq.detalle,
+      `$${liq.montoTotal.toLocaleString()}`
+    ]);
+
+    doc.autoTable({
+      startY: 35,
+      head: [['Fecha Cobro', 'ID Liquidación', 'Detalle de Pedidos Saldados Incluidos', 'Monto Total']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [25, 135, 84] },
+      styles: { fontSize: 8, cellPadding: 3 },
+      columnStyles: {
+        0: { cellWidth: 25 },
+        1: { cellWidth: 35 },
+        2: { cellWidth: 95 },
+        3: { cellWidth: 30, fontStyle: 'bold' }
+      }
+    });
+
+    const totalGeneral = DB.liquidacionesComision.reduce((sum, l) => sum + l.montoTotal, 0);
+    const finalY = doc.lastAutoTable.finalY || 40;
+
+    doc.setFontSize(12);
+    doc.setFont('Helvetica', 'bold');
+    doc.text(`Total Histórico Liquidado: $${totalGeneral.toLocaleString()}`, 14, finalY + 12);
+
+    doc.save(`Historial_Comisiones_${Date.now()}.pdf`);
+  }
+
+  function render() {
+    // 1. RENDER COMISIONES PENDIENTES
+    const tbodyComisiones = document.getElementById("tablaComisionesPendientes");
+    tbodyComisiones.innerHTML = "";
+
+    let totalComisionesHabilitadas = 0;
+    let hayComisionesListas = false;
+
+    DB.clientes.forEach(cli => {
+      const estado = obtenerEstadoPedidosCliente(cli.id);
+      estado.pedidos.forEach(p => {
+        if (p.esPagadoTotal && !p.comisionCobrada) {
+          hayComisionesListas = true;
+          totalComisionesHabilitadas += p.montoComisionCalculada;
+
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td><strong>${cli.nombre}</strong></td>
+            <td>Pedido #${p.numeroPedido} (${p.concepto})</td>
+            <td>$${p.montoTotal.toLocaleString()}</td>
+            <td><span class="badge badge-success">Pagado 100%</span></td>
+            <td><strong style="color:#198754;">$${p.montoComisionCalculada.toLocaleString()}</strong></td>
+          `;
+          tbodyComisiones.appendChild(tr);
+        }
+      });
+    });
+
+    document.getElementById("lblTotalComisionesAcumuladas").innerText = "$" + totalComisionesHabilitadas.toLocaleString();
+    document.getElementById("btnCobrarComisiones").disabled = !hayComisionesListas;
+
+    if (!hayComisionesListas) {
+      tbodyComisiones.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#777;">No hay pedidos totalmente saldados pendientes de cobrar comisión.</td></tr>';
+    }
+
+    // 2. RENDER HISTORIAL LIQUIDACIONES
+    const tbodyHistorial = document.getElementById("tablaHistorialLiquidaciones");
+    tbodyHistorial.innerHTML = "";
+
+    if (!DB.liquidacionesComision || DB.liquidacionesComision.length === 0) {
+      tbodyHistorial.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#777;">No hay historial de comisiones cobradas aún.</td></tr>';
+    } else {
+      DB.liquidacionesComision.forEach(liq => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${liq.fecha}</td>
+          <td><small style="color:#555;">${liq.id}</small></td>
+          <td>${liq.detalle}</td>
+          <td><strong style="color:#198754;">$${liq.montoTotal.toLocaleString()}</strong></td>
+        `;
+        tbodyHistorial.appendChild(tr);
+      });
+    }
+
+    // 3. RENDER CLIENTE SELECCIONADO
+    const panel = document.getElementById("panelCliente");
+
+    if (!clienteSeleccionadoId) {
+      panel.style.display = "none";
+      return;
+    }
+
+    panel.style.display = "block";
+    const cliente = DB.clientes.find(c => c.id === clienteSeleccionadoId);
+    if (!cliente) {
+      panel.style.display = "none";
+      return;
+    }
+
+    const estadoCliente = obtenerEstadoPedidosCliente(clienteSeleccionadoId);
+
+    document.getElementById("lblNombreCliente").innerText = cliente.nombre;
+    document.getElementById("lblTotalVentas").innerText = "$" + estadoCliente.totalVentas.toLocaleString();
+    document.getElementById("lblTotalPagos").innerText = "$" + estadoCliente.totalPagos.toLocaleString();
+
+    const badgeContainer = document.getElementById("lblEstadoBadge");
+
+    if (estadoCliente.saldoAFavor > 0) {
+      badgeContainer.innerHTML = `<span class="badge badge-info">Saldo a Favor: $${estadoCliente.saldoAFavor.toLocaleString()}</span>`;
+    } else if (estadoCliente.deudaTotal > 0) {
+      badgeContainer.innerHTML = `<span class="badge badge-danger">Debe: $${estadoCliente.deudaTotal.toLocaleString()}</span>`;
+    } else if (estadoCliente.totalVentas > 0 && estadoCliente.deudaTotal === 0) {
+      badgeContainer.innerHTML = `<span class="badge badge-success">Al día ($0.00)</span>`;
+    } else {
+      badgeContainer.innerHTML = `<span class="badge">Sin movimientos</span>`;
+    }
+
+    // TABLA PEDIDOS DEL CLIENTE
+    const tbodyPedidos = document.getElementById("tablaPedidosCliente");
+    tbodyPedidos.innerHTML = "";
+
+    if (estadoCliente.pedidos.length === 0) {
+      tbodyPedidos.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#888;">Este cliente no tiene pedidos registrados.</td></tr>';
+    } else {
+      estadoCliente.pedidos.forEach(p => {
+        const tr = document.createElement("tr");
+        
+        let badgeEstado = '';
+        if (p.esPagadoTotal) {
+          badgeEstado = '<span class="badge badge-success">Saldado (100%)</span>';
+        } else if (p.montoAplicado > 0) {
+          badgeEstado = '<span class="badge badge-warning">Abonado Parcial</span>';
+        } else {
+          badgeEstado = '<span class="badge badge-danger">Pendiente</span>';
+        }
+
+        let txtComision = '-';
+        if (p.esPagadoTotal) {
+          if (p.comisionCobrada) {
+            txtComision = `<span style="color:#6c757d;">$${p.montoComisionCalculada.toLocaleString()} (Cobrada)</span>`;
+          } else {
+            txtComision = `<strong style="color:#198754;">$${p.montoComisionCalculada.toLocaleString()} (Habilitada)</strong>`;
+          }
+        } else {
+          txtComision = `<span style="color:#dc3545; font-size:0.85em;">No disponible (Falta saldar $${p.saldoPendiente.toLocaleString()})</span>`;
+        }
+
+        tr.innerHTML = `
+          <td>${p.fecha}</td>
+          <td><strong>Pedido #${p.numeroPedido}</strong> <br><small>${p.concepto}</small></td>
+          <td>$${p.montoTotal.toLocaleString()}</td>
+          <td style="color:#198754;">$${p.montoAplicado.toLocaleString()}</td>
+          <td style="color:#dc3545;">$${p.saldoPendiente.toLocaleString()}</td>
+          <td>${badgeEstado}</td>
+          <td>${txtComision}</td>
+          <td class="actions-cell">
+            <button type="button" class="btn-warning" onclick="editarPedido('${p.id}')">✏️ Editar</button>
+            <button type="button" class="btn-danger" onclick="eliminarPedido('${p.id}')">🗑️</button>
+          </td>
+        `;
+        tbodyPedidos.appendChild(tr);
+      });
+    }
+
+    // TABLA PAGOS DEL CLIENTE
+    const tbodyPagos = document.getElementById("tablaPagosCliente");
+    tbodyPagos.innerHTML = "";
+
+    const pagosCliente = DB.pagos.filter(p => p.clienteId === clienteSeleccionadoId);
+
+    if (pagosCliente.length === 0) {
+      tbodyPagos.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#888;">No hay abonos registrados para este cliente.</td></tr>';
+    } else {
+      pagosCliente.forEach(p => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${p.fecha}</td>
+          <td><strong>${p.metodo}</strong></td>
+          <td>${p.montoUSD > 0 ? `$${p.montoUSD} USD (TC:${p.tipoCambio})` : '-'}</td>
+          <td><strong style="color:#198754;">$${p.montoLocal.toLocaleString()}</strong></td>
+          <td class="actions-cell">
+            <button type="button" class="btn-warning" onclick="editarPago('${p.id}')">✏️ Editar</button>
+            <button type="button" class="btn-danger" onclick="eliminarPago('${p.id}')">🗑️</button>
+          </td>
+        `;
+        tbodyPagos.appendChild(tr);
+      });
+    }
+  }
+
+  function limpiarTodoDatos() {
+    if (confirm("¿Estás seguro de eliminar todos los clientes y datos guardados?")) {
+      localStorage.clear();
+      DB = { clientes: [], pedidos: [], pagos: [], liquidacionesComision: [] };
+      clienteSeleccionadoId = null;
+      actualizarSelectorClientes();
+      render();
+    }
+  }
+
+  window.onload = function() {
+    cargarDatos();
+    actualizarSelectorClientes();
+    render();
+  };
+</script>
+
+</body>
+</html>
